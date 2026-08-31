@@ -8,7 +8,7 @@ on:
       runners:
         description: JSON array of GitHub-hosted runners to build on
         required: true
-        default: '["macos-26","macos-15","macos-14","ubuntu-latest","ubuntu-24.04-arm"]'
+        default: '["macos-26","ubuntu-latest"]'
       timeout:
         description: Build timeout per runner, in minutes
         type: number
