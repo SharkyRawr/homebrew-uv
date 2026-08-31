@@ -113,7 +113,8 @@ jobs:
           repository_name="${GITHUB_REPOSITORY#*/}"
           tap_name="${repository_name#homebrew-}"
           tap_formula="${GITHUB_REPOSITORY_OWNER}/${tap_name}/${FORMULA}"
-          root_url="https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/${tap_name}"
+          repository_owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          root_url="https://ghcr.io/v2/${repository_owner}/${tap_name}"
           test_bot_args=(
             --only-formulae
             --skip-dependents
@@ -221,7 +222,8 @@ jobs:
         run: |
           repository_name="${GITHUB_REPOSITORY#*/}"
           tap_name="${repository_name#homebrew-}"
-          root_url="https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/${tap_name}"
+          repository_owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          root_url="https://ghcr.io/v2/${repository_owner}/${tap_name}"
           brew pr-upload --verbose --root-url="$root_url"
 
       - name: Make bottle package public
