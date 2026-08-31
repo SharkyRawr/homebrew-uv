@@ -1,10 +1,13 @@
 name: Build and publish bottles
 
-run-name: Build latest uv bottles
+run-name: Build uv ${{ inputs.release || 'formula version' }} bottles
 
 on:
   workflow_dispatch:
     inputs:
+      release:
+        description: uv release tag to build (empty uses the formula's current version)
+        required: false
       runners:
         description: JSON array of GitHub-hosted runners to build on
         required: true
@@ -33,22 +36,32 @@ concurrency:
 permissions: {}
 
 jobs:
-  release:
+  source:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.latest.outputs.version }}
-      url: ${{ steps.latest.outputs.url }}
-      sha256: ${{ steps.latest.outputs.sha256 }}
+      version: ${{ steps.source.outputs.version }}
+      url: ${{ steps.source.outputs.url }}
+      sha256: ${{ steps.source.outputs.sha256 }}
     steps:
-      - name: Resolve latest uv release
-        id: latest
+      - name: Check out tap
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Resolve requested uv release
+        id: source
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_RELEASE: ${{ inputs.release }}
         run: |
-          release="$(gh api repos/astral-sh/uv/releases/latest)"
-          tag="$(jq -r '.tag_name' <<< "$release")"
+          tag="$REQUESTED_RELEASE"
+          if [[ -z "$tag" ]]; then
+            tag="$(sed -n 's|.*refs/tags/\([^/]*\)\.tar\.gz.*|\1|p' Formula/uv.rb)"
+          fi
+          if [[ -z "$tag" ]]; then
+            echo "::error::Could not determine the uv release tag"
+            exit 1
+          fi
+
           version="${tag#v}"
           url="https://github.com/astral-sh/uv/archive/refs/tags/${tag}.tar.gz"
           archive="$(mktemp)"
@@ -62,7 +75,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   bottle:
-    needs: release
+    needs: source
     strategy:
       fail-fast: false
       matrix:
@@ -86,18 +99,28 @@ jobs:
           key: ${{ matrix.runner }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
           restore-keys: ${{ matrix.runner }}-rubygems-
 
-      - name: Target latest uv release
+      - name: Target requested uv release
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_SHA256: ${{ needs.release.outputs.sha256 }}
-          RELEASE_URL: ${{ needs.release.outputs.url }}
-          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_SHA256: ${{ needs.source.outputs.sha256 }}
+          RELEASE_URL: ${{ needs.source.outputs.url }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
         run: |
           repository_name="${GITHUB_REPOSITORY#*/}"
           tap_name="${repository_name#homebrew-}"
           tap_formula="${GITHUB_REPOSITORY_OWNER}/${tap_name}/${FORMULA}"
           current_version="$(brew info --json=v2 "$tap_formula" | jq -r '.formulae[0].versions.stable')"
           if [[ "$current_version" == "$RELEASE_VERSION" ]]; then
+            repository_owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+            root_url="https://ghcr.io/v2/${repository_owner}/${tap_name}"
+            formula_path="$(brew --repo "${GITHUB_REPOSITORY_OWNER}/${tap_name}")/Formula/${FORMULA}.rb"
+            FORMULA_PATH="$formula_path" ROOT_URL="$root_url" ruby -e '
+              path = ENV.fetch("FORMULA_PATH")
+              contents = File.read(path)
+              replacement = "  bottle do\n    root_url #{ENV.fetch("ROOT_URL").inspect}\n"
+              abort "Could not update bottle root in #{path}" unless contents.sub!(/^  bottle do\n(?:    root_url .*\n)?/, replacement)
+              File.write(path, contents)
+            '
             echo "KEEP_OLD_REBUILD=1" >> "$GITHUB_ENV"
           else
             brew bump-formula-pr \
@@ -137,7 +160,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [release, bottle]
+    needs: [source, bottle]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -164,12 +187,12 @@ jobs:
       - name: Configure Git user
         uses: Homebrew/actions/git-user-config@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
 
-      - name: Target latest uv release
+      - name: Target requested uv release
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_SHA256: ${{ needs.release.outputs.sha256 }}
-          RELEASE_URL: ${{ needs.release.outputs.url }}
-          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_SHA256: ${{ needs.source.outputs.sha256 }}
+          RELEASE_URL: ${{ needs.source.outputs.url }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
         run: |
           repository_name="${GITHUB_REPOSITORY#*/}"
           tap_name="${repository_name#homebrew-}"
