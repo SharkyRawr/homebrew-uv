@@ -8,11 +8,9 @@ class Uv < Formula
   head "https://github.com/astral-sh/uv.git", branch: "main"
 
   bottle do
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:   "fa95dac85ada28a2605da25f85384cb8935e36e0199f2e1629d5eacb63bb16ae"
-    sha256 cellar: :any_skip_relocation, arm64_sequoia: "2ee131aee93bbe3c4cbc31e6fafd0a6984cb64c1b1b418929705bf9214750bcf"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma:  "4acee561833a2b910fe32904f6a8e6d4b356f471a2cb798e0d8042089e499f39"
-    sha256 cellar: :any,                 arm64_linux:   "8f44e1ed8a567d51184738598b11482b663b7b00c625191f2c81c55c323349db"
-    sha256 cellar: :any,                 x86_64_linux:  "13292ad43839f3e4ca2c123a339b65176e0ad1addee9a7be1d1f4a8601ccab0b"
+    root_url "https://github.com/SharkyRawr/homebrew-uv/releases/download/bottles-0.12.7"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "efc4381c0ee2b69fd679e048ac15070b0c41aea15a8670f8a11e45589e1ddebd"
+    sha256 cellar: :any,                 x86_64_linux: "19491d1fc0786621d4d71e64c45562f2e029c8a1c1161e144879d72566f60186"
   end
 
   depends_on "pkgconf" => :build

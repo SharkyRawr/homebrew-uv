@@ -234,9 +234,17 @@ jobs:
 
       - name: Verify public bottle downloads
         env:
-          ROOT_URL: ${{ needs.source.outputs.root_url }}
+          RELEASE_TAG: ${{ needs.source.outputs.release_tag }}
         run: |
-          for bottle in "$BOTTLES_DIR"/*.bottle.tar.gz; do
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          expected_assets="$(find "$BOTTLES_DIR" -maxdepth 1 -name '*.bottle.tar.gz' | wc -l | tr -d ' ')"
+          uploaded_assets="$(jq -r '.assets | length' <<< "$release")"
+          if [[ "$uploaded_assets" != "$expected_assets" ]]; then
+            echo "::error::Expected $expected_assets bottle assets, found $uploaded_assets"
+            exit 1
+          fi
+
+          while IFS= read -r asset_url; do
             curl \
               --fail \
               --head \
@@ -247,8 +255,8 @@ jobs:
               --silent \
               --show-error \
               --output /dev/null \
-              "$ROOT_URL/$(basename "$bottle")"
-          done
+              "$asset_url"
+          done < <(jq -r '.assets[].browser_download_url' <<< "$release")
 
       - name: Push bottle commit
         uses: Homebrew/actions/git-try-push@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
