@@ -50,16 +50,6 @@ jobs:
       - name: Check out tap
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Check release storage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          immutable="$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled')"
-          if [[ "$immutable" == true ]]; then
-            echo "::error::Immutable releases must be disabled to overwrite bottle assets"
-            exit 1
-          fi
-
       - name: Resolve requested uv release
         id: source
         env:
