@@ -1,0 +1,251 @@
+name: Build and publish bottles
+
+run-name: Build latest uv bottles
+
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: JSON array of GitHub-hosted runners to build on
+        required: true
+        default: '["macos-26","macos-15","macos-14","ubuntu-latest","ubuntu-24.04-arm"]'
+      timeout:
+        description: Build timeout per runner, in minutes
+        type: number
+        required: false
+        default: 60
+
+env:
+  FORMULA: uv
+  HOMEBREW_DEVELOPER: 1
+  HOMEBREW_GITHUB_ACTIONS: 1
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_BUILD_ERROR_ISSUES: 1
+
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
+concurrency:
+  group: bottle-uv
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+      url: ${{ steps.latest.outputs.url }}
+      sha256: ${{ steps.latest.outputs.sha256 }}
+    steps:
+      - name: Resolve latest uv release
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release="$(gh api repos/astral-sh/uv/releases/latest)"
+          tag="$(jq -r '.tag_name' <<< "$release")"
+          version="${tag#v}"
+          url="https://github.com/astral-sh/uv/archive/refs/tags/${tag}.tar.gz"
+          archive="$(mktemp)"
+          curl --fail --location --silent --show-error "$url" --output "$archive"
+          sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+
+          {
+            echo "version=$version"
+            echo "url=$url"
+            echo "sha256=$sha256"
+          } >> "$GITHUB_OUTPUT"
+
+  bottle:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout) }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Homebrew Bundler RubyGems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ matrix.runner }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ matrix.runner }}-rubygems-
+
+      - name: Target latest uv release
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA256: ${{ needs.release.outputs.sha256 }}
+          RELEASE_URL: ${{ needs.release.outputs.url }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          tap_formula="${GITHUB_REPOSITORY_OWNER}/${tap_name}/${FORMULA}"
+          current_version="$(brew info --json=v2 "$tap_formula" | jq -r '.formulae[0].versions.stable')"
+          if [[ "$current_version" == "$RELEASE_VERSION" ]]; then
+            echo "KEEP_OLD_REBUILD=1" >> "$GITHUB_ENV"
+          else
+            brew bump-formula-pr \
+              --write-only \
+              --no-audit \
+              --url="$RELEASE_URL" \
+              --sha256="$RELEASE_SHA256" \
+              "$tap_formula"
+          fi
+
+      - name: Build and test bottle
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          tap_formula="${GITHUB_REPOSITORY_OWNER}/${tap_name}/${FORMULA}"
+          root_url="https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/${tap_name}"
+          test_bot_args=(
+            --only-formulae
+            --skip-dependents
+            --skip-online-checks
+            --root-url="$root_url"
+          )
+          if [[ "${KEEP_OLD_REBUILD:-}" == 1 ]]; then
+            test_bot_args+=(--keep-old)
+          fi
+
+          brew test-bot --only-cleanup-before
+          brew test-bot --only-setup
+          brew test-bot "${test_bot_args[@]}" "$tap_formula"
+
+      - name: Upload bottle artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bottles_${{ matrix.runner }}
+          path: '*.bottle.*'
+          if-no-files-found: error
+
+  publish:
+    needs: [release, bottle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      BOTTLES_DIR: ${{ github.workspace }}/bottles
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HOMEBREW_GITHUB_PACKAGES_USER: ${{ github.repository_owner }}
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download bottles
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.0
+        with:
+          pattern: bottles_*
+          path: ${{ env.BOTTLES_DIR }}
+          merge-multiple: true
+
+      - name: Configure Git user
+        uses: Homebrew/actions/git-user-config@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
+
+      - name: Target latest uv release
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA256: ${{ needs.release.outputs.sha256 }}
+          RELEASE_URL: ${{ needs.release.outputs.url }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          tap_formula="${GITHUB_REPOSITORY_OWNER}/${tap_name}/${FORMULA}"
+          current_version="$(brew info --json=v2 "$tap_formula" | jq -r '.formulae[0].versions.stable')"
+          if [[ "$current_version" != "$RELEASE_VERSION" ]]; then
+            brew bump-formula-pr \
+              --write-only \
+              --no-audit \
+              --url="$RELEASE_URL" \
+              --sha256="$RELEASE_SHA256" \
+              "$tap_formula"
+          fi
+
+      - name: Remove an existing package version
+        working-directory: ${{ env.BOTTLES_DIR }}
+        run: |
+          bottle_json="$(find . -maxdepth 1 -name '*.bottle.json' -print -quit)"
+          version="$(jq -r 'to_entries[0].value.formula.pkg_version' "$bottle_json")"
+          rebuild="$(jq -r 'to_entries[0].value.bottle.rebuild // 0' "$bottle_json")"
+          package_tag="$version"
+          if (( rebuild > 0 )); then
+            package_tag="${version}-${rebuild}"
+          fi
+
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          formula_name="${FORMULA##*/}"
+          package_name="${tap_name}/${formula_name}"
+          encoded_package_name="$(jq -rn --arg value "$package_name" '$value | @uri')"
+          owner_type="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.owner.type')"
+
+          if [[ "$owner_type" == "Organization" ]]; then
+            versions_endpoint="orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}/versions"
+          else
+            versions_endpoint="users/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}/versions"
+          fi
+
+          versions="$(gh api "$versions_endpoint?per_page=100" 2>/dev/null || true)"
+          version_id="$(jq -r --arg tag "$package_tag" \
+            '.[] | select(any(.metadata.container.tags[]?; . == $tag)) | .id' \
+            <<< "$versions" | head -n 1)"
+
+          if [[ -n "$version_id" ]]; then
+            gh api --method DELETE "$versions_endpoint/$version_id"
+          fi
+
+      - name: Upload bottles and update formula metadata
+        working-directory: ${{ env.BOTTLES_DIR }}
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          root_url="https://ghcr.io/v2/${GITHUB_REPOSITORY_OWNER,,}/${tap_name}"
+          brew pr-upload --verbose --root-url="$root_url"
+
+      - name: Make bottle package public
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          tap_name="${repository_name#homebrew-}"
+          package_name="${tap_name}/${FORMULA}"
+          encoded_package_name="$(jq -rn --arg value "$package_name" '$value | @uri')"
+          owner_type="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.owner.type')"
+
+          if [[ "$owner_type" == "Organization" ]]; then
+            package_endpoint="orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
+          else
+            package_endpoint="users/${GITHUB_REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
+          fi
+
+          visibility="$(gh api "$package_endpoint" --jq '.visibility')"
+          if [[ "$visibility" != "public" ]]; then
+            gh api --method PATCH "$package_endpoint" --field visibility=public
+          fi
+
+      - name: Push bottle commit
+        uses: Homebrew/actions/git-try-push@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
+          branch: ${{ github.ref_name }}
