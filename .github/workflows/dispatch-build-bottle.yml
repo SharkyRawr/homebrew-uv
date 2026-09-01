@@ -181,8 +181,6 @@ jobs:
       - name: Set up Homebrew
         id: set-up-homebrew
         uses: Homebrew/actions/setup-homebrew@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download bottles
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.0
@@ -257,12 +255,6 @@ jobs:
               --output /dev/null \
               "$asset_url"
           done < <(jq -r '.assets[].browser_download_url' <<< "$release")
-
-      - name: Clear inherited GitHub credentials
-        working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}
-        run: |
-          git config --local --unset-all http.https://github.com/.extraheader || true
-          git config --global --unset-all http.https://github.com/.extraheader || true
 
       - name: Push bottle commit
         uses: Homebrew/actions/git-try-push@a657b8b0cd35d0f65cce41fce9b24cf054b49869 # 2026.08.24.1
