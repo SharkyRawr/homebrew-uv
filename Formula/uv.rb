@@ -1,16 +1,16 @@
 class Uv < Formula
   desc "Extremely fast Python package installer and resolver, written in Rust"
   homepage "https://docs.astral.sh/uv/"
-  url "https://github.com/astral-sh/uv/archive/refs/tags/0.13.4.tar.gz"
-  sha256 "182d66815490dbb497b456a6fde93c7e66ae7f27a50a2065b3b5a06fbb3a20bd"
+  url "https://github.com/astral-sh/uv/archive/refs/tags/0.13.5.tar.gz"
+  sha256 "fbe5c69803f813d36661aaa18c0716317710b0069c9427ba8ef174c6de7c8b4b"
   license any_of: ["Apache-2.0", "MIT"]
   compatibility_version 1
   head "https://github.com/astral-sh/uv.git", branch: "main"
 
   bottle do
-    root_url "https://github.com/SharkyRawr/homebrew-uv/releases/download/bottles-0.13.4"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "8725a887107d11a8df90fd4bc391206e12e62ea8ceaa8b6f5e305de35cff3537"
-    sha256 cellar: :any,                 x86_64_linux: "88d7db1fce5c76d5534afed9cc4aa67f8f081c4f1ded51c030530fcdb232fef7"
+    root_url "https://github.com/SharkyRawr/homebrew-uv/releases/download/bottles-0.13.5"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "dd22c22ab607ec7ff0c50e0178a3daaaf6275c0574a38df9a56d27dfac262a7e"
+    sha256 cellar: :any,                 x86_64_linux: "85a2b0f5569dfe8ea5595c2801610b3b5257eeafe04d0c3be3cbd6f5c61af79d"
   end
 
   depends_on "pkgconf" => :build
