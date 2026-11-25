@@ -9,8 +9,9 @@ class Uv < Formula
 
   bottle do
     root_url "https://github.com/SharkyRawr/homebrew-uv/releases/download/bottles-0.13.9"
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "1ba35a03faaf9d74f237c8b24c8be23ea6953f674c7c6a512c01d72ea05ea1d6"
-    sha256 cellar: :any,                 x86_64_linux: "d7df2d00897a7c3b5c75038995fc6b9e1871e96493778c0aaecc22354a77cbe1"
+    sha256 cellar: :any_skip_relocation, arm64_golden_gate: "6c8142d565374a0a996e2b65efad558c0aafc91af85f2c6501358559b0573461"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:       "349aad18f73cce1945560d16d3920107774c08b3eabc2e1c87e20185c0076b33"
+    sha256 cellar: :any,                 x86_64_linux:      "35529a7dfb411bacb3e989278168317c1986cdb172a70155a6a59be8ba957dff"
   end
 
   depends_on "pkgconf" => :build
