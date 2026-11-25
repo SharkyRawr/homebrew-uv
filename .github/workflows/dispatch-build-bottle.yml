@@ -97,6 +97,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Ensure zstd is available for cache restore
+        if: runner.os == 'macOS'
+        run: zstd --version || brew install zstd
+
       - name: Cache Homebrew Bundler RubyGems
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -189,6 +193,11 @@ jobs:
           brew test-bot --only-cleanup-before
           brew test-bot --only-setup
           brew test-bot "${test_bot_args[@]}" "$tap_formula"
+
+      # test-bot can uninstall zstd before actions/cache runs its post-job saves.
+      - name: Ensure zstd is available for cache save
+        if: runner.os == 'macOS'
+        run: zstd --version || brew install zstd
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
