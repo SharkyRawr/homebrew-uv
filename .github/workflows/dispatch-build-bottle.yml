@@ -11,7 +11,7 @@ on:
       runners:
         description: JSON array of GitHub-hosted runners to build on
         required: true
-        default: '["macos-26","ubuntu-latest"]'
+        default: '["macos-26","macos-27","ubuntu-latest"]'
       timeout:
         description: Build timeout per runner, in minutes
         type: number
