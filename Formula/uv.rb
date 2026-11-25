@@ -28,7 +28,11 @@ class Uv < Formula
     ENV["UV_COMMIT_DATE"] = time.strftime("%F")
     # See: https://github.com/astral-sh/uv/issues/15401
     ENV["JEMALLOC_SYS_WITH_LG_PAGE"] = "16" if Hardware::CPU.arm? && OS.linux?
+    cargo_target = ENV["HOMEBREW_UV_CARGO_TARGET_DIR"]
+    ENV["CARGO_TARGET_DIR"] = cargo_target if cargo_target
     system "cargo", "install", *std_cargo_args(path: "crates/uv")
+    # Keep third-party dependencies in CI, but always rebuild uv's workspace from the requested source.
+    system "cargo", "clean", "--workspace", "--release", "--frozen" if cargo_target
     generate_completions_from_executable(bin/"uv", "generate-shell-completion")
     generate_completions_from_executable(bin/"uvx", "--generate-shell-completion")
   end
